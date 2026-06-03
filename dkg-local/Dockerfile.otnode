@@ -62,7 +62,7 @@ RUN mkdir -p /var/log/ot-node /opt/blazegraph-data /opt/ot-node/data
 
 # ── 7. Entrypoint ─────────────────────────────────────────────────────────────
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN sed -i 's/\r//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 EXPOSE 8900
 
