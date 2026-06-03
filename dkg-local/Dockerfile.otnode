@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM --platform=linux/amd64 node:20.11.0-bookworm
+FROM node:20.11.0-bookworm
 
 # ── 1. System deps ────────────────────────────────────────────────────────────
 # default-mysql-server → MariaDB on bookworm (ot-node uses sequelize/mysql2)
