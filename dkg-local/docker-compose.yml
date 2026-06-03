@@ -1,0 +1,19 @@
+services:
+  otnode:
+    build:
+      context: .
+      dockerfile: Dockerfile.otnode
+    platform: linux/amd64
+    ports:
+      - "8900:8900"
+      - "8545:8545"
+    mem_limit: 8g
+    volumes:
+      - ./logs:/var/log/ot-node
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8900/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+    restart: unless-stopped

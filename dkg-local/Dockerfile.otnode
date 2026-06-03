@@ -1,0 +1,69 @@
+# syntax=docker/dockerfile:1
+FROM --platform=linux/amd64 node:20.11.0-bookworm
+
+# ── 1. System deps ────────────────────────────────────────────────────────────
+# default-mysql-server → MariaDB on bookworm (ot-node uses sequelize/mysql2)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-17-jre-headless \
+    git \
+    wget \
+    curl \
+    netcat-openbsd \
+    jq \
+    build-essential \
+    python3 \
+    default-mysql-server \
+    redis-server \
+ && rm -rf /var/lib/apt/lists/*
+
+# ── 2. ot-node at pinned SHA ──────────────────────────────────────────────────
+# Full clone required — shallow clones can't resolve arbitrary SHAs.
+# Bump OTNODE_SHA → only this layer + npm install are invalidated.
+ARG OTNODE_SHA=a8156d63132d5584a8adb8307e046ba45c4e7000
+RUN git clone https://github.com/OriginTrail/ot-node.git /opt/ot-node \
+ && git -C /opt/ot-node checkout ${OTNODE_SHA}
+
+# ── 3. npm install ────────────────────────────────────────────────────────────
+# Separate layer: cached as long as OTNODE_SHA (and thus package.json) doesn't change.
+# devDependencies included — Hardhat + dkg-evm-module deploy scripts live there.
+#
+# --mount=type=cache persists ~/.npm on the Docker host between builds.
+# If the build fails mid-download, the next run resumes from cached tarballs.
+# fetch-timeout=600000 gives each tarball up to 10 min (needed on Rosetta/M-series).
+WORKDIR /opt/ot-node
+RUN --mount=type=cache,target=/root/.npm \
+    npm config set fetch-timeout 600000 \
+ && npm install \
+      --fetch-retries=5 \
+      --fetch-retry-mintimeout=30000 \
+      --fetch-retry-maxtimeout=300000 \
+      --maxsockets=3 \
+      --loglevel=warn
+
+# ── 4. Pre-download Solidity compiler ────────────────────────────────────────
+# Hardhat fetches solc at first run; on Rosetta that download hangs.
+# Running compile here bakes the binary into the image (~30 MB, cached layer).
+# Errors from compilation itself are non-fatal — we only need the download.
+RUN --mount=type=cache,target=/root/.cache/hardhat-nodejs \
+    cd /opt/ot-node/node_modules/dkg-evm-module \
+ && npx hardhat compile --config hardhat.node.config.ts 2>&1 \
+ || echo "[build] Hardhat compile finished (errors above may be non-fatal)"
+
+# ── 5. Blazegraph jar ─────────────────────────────────────────────────────────
+# Pinned release tag → deterministic URL. sha256sum verified at build time.
+# If verification fails: wget jar locally, run sha256sum, update ARG below.
+ARG BLAZEGRAPH_URL=https://github.com/blazegraph/database/releases/download/BLAZEGRAPH_2_1_6_RC/blazegraph.jar
+ARG BLAZEGRAPH_SHA256=930c38b5bce7c0ae99701c1f6ef3057c52f3f385d938e1397a3e05561c7df5de
+RUN wget -q --tries=3 --timeout=60 -O /opt/blazegraph.jar "${BLAZEGRAPH_URL}" \
+ && echo "${BLAZEGRAPH_SHA256}  /opt/blazegraph.jar" | sha256sum -c -
+
+# ── 6. Runtime dirs ───────────────────────────────────────────────────────────
+RUN mkdir -p /var/log/ot-node /opt/blazegraph-data /opt/ot-node/data
+
+# ── 7. Entrypoint ─────────────────────────────────────────────────────────────
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 8900
+
+ENTRYPOINT ["/entrypoint.sh"]
