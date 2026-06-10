@@ -147,6 +147,7 @@ echo "[entrypoint] All 5 configs generated"
 # ─── 6. Patch node configs ────────────────────────────────────────────────────
 # Inject full DB credentials so ot-node doesn't fall back to Sequelize defaults.
 # Open IP whitelist so NestJS on Docker bridge can connect to port 8900.
+# Fix bootstrap address: 0.0.0.0 is a listen address, not dialable — use 127.0.0.1.
 echo "[entrypoint] Patching node configs..."
 for i in 0 1 2 3 4; do
     cfg="$OTNODE/tools/local-network-setup/.node${i}_origintrail_noderc.json"
@@ -161,6 +162,7 @@ for i in 0 1 2 3 4; do
         .auth.ipBasedAuthEnabled    = false |
         .auth.tokenBasedAuthEnabled = false' \
         "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
+    sed -i 's|/ip4/0\.0\.0\.0/tcp/9100|/ip4/127.0.0.1/tcp/9100|g' "$cfg"
 done
 
 # ─── 7. Start 5 ot-nodes ──────────────────────────────────────────────────────
