@@ -95,9 +95,9 @@ cd "$OTNODE"
 nohup node "$OTNODE/tools/local-network-setup/run-local-blockchain.js" 8545 \
     > "$LOG/hardhat1.log" 2>&1 &
 
-wait_port "Hardhat1" 8545 300 "$LOG/hardhat1.log"
+wait_port "Hardhat1" 8545 600 "$LOG/hardhat1.log"
 wait_log "Hardhat1 contracts" "$LOG/hardhat1.log" \
-    "Contracts deployed and ready on port 8545" 600
+    "Contracts deployed and ready on port 8545" 900
 
 # ─── 4. Hardhat 2 (port 9545) ─────────────────────────────────────────────────
 echo "[entrypoint] Starting Hardhat 2 + contract deploy ..."
@@ -105,9 +105,9 @@ cd "$OTNODE"
 nohup node "$OTNODE/tools/local-network-setup/run-local-blockchain.js" 9545 \
     > "$LOG/hardhat2.log" 2>&1 &
 
-wait_port "Hardhat2" 9545 300 "$LOG/hardhat2.log"
+wait_port "Hardhat2" 9545 600 "$LOG/hardhat2.log"
 wait_log "Hardhat2 contracts" "$LOG/hardhat2.log" \
-    "Contracts deployed and ready on port 9545" 600
+    "Contracts deployed and ready on port 9545" 900
 
 # ─── 5. Generate ot-node configs ──────────────────────────────────────────────
 echo "[entrypoint] Generating configs for 5 ot-nodes..."
@@ -177,7 +177,10 @@ for i in 0 1 2 3 4; do
 done
 
 # ─── 8. Wait for bootstrap node (node-0) ──────────────────────────────────────
-wait_port "ot-node-0 (bootstrap)" 8900 300
+# Bootstrap ot-node init (MySQL schema + blockchain sync + libp2p) can exceed 5 min
+# on this host; a timeout here `exit 1`s the whole entrypoint (set -e) and the
+# container restarts from scratch (re-deploying both chains), so keep it generous.
+wait_port "ot-node-0 (bootstrap)" 8900 "${BOOTSTRAP_TIMEOUT:-900}"
 
 echo ""
 echo "[entrypoint] ══════════════════════════════════════════════════"
