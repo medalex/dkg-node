@@ -16,12 +16,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     redis-server \
  && rm -rf /var/lib/apt/lists/*
 
-# ── 2. ot-node at pinned SHA ──────────────────────────────────────────────────
-# Full clone required — shallow clones can't resolve arbitrary SHAs.
-# Bump OTNODE_SHA → only this layer + npm install are invalidated.
+# ── 2. ot-node at pinned SHA (vendored) ───────────────────────────────────────
+# github.com/OriginTrail/ot-node (later dkg-engine) is no longer public, so the source
+# is vendored: `git archive` of commit OTNODE_SHA, see vendor/README.md.
+# sha256sum verified at build time. The repo needs a commit: `prepare: husky install` wants .git,
+# and the dkg-evm-module deploy scripts record `git rev-parse HEAD` / branch in deployments.json.
+# HEAD is detached, as after the original `git checkout ${OTNODE_SHA}`.
 ARG OTNODE_SHA=a8156d63132d5584a8adb8307e046ba45c4e7000
-RUN git clone https://github.com/OriginTrail/ot-node.git /opt/ot-node \
- && git -C /opt/ot-node checkout ${OTNODE_SHA}
+ARG OTNODE_TARBALL_SHA256=3700d4da1106475bde95f04fc73634a7136f99e0c57a77cee0ebc6726040ed09
+COPY vendor/ot-node-a8156d6.tar.gz /tmp/ot-node.tar.gz
+RUN echo "${OTNODE_TARBALL_SHA256}  /tmp/ot-node.tar.gz" | sha256sum -c - \
+ && tar -xzf /tmp/ot-node.tar.gz -C /opt \
+ && rm /tmp/ot-node.tar.gz \
+ && git -C /opt/ot-node init -q \
+ && git -C /opt/ot-node add -A \
+ && git -C /opt/ot-node -c user.name=dkg-local -c user.email=dkg-local@localhost \
+        commit -q -m "ot-node ${OTNODE_SHA} (vendored, see vendor/README.md)" \
+ && git -C /opt/ot-node checkout -q --detach
 
 # ── 3. npm install ────────────────────────────────────────────────────────────
 # Separate layer: cached as long as OTNODE_SHA (and thus package.json) doesn't change.
@@ -31,6 +42,18 @@ RUN git clone https://github.com/OriginTrail/ot-node.git /opt/ot-node \
 # If the build fails mid-download, the next run resumes from cached tarballs.
 # fetch-timeout=600000 gives each tarball up to 10 min (needed on Rosetta/M-series).
 WORKDIR /opt/ot-node
+
+# dkg-evm-module is a git dependency on github.com/OriginTrail/dkg-evm-module, which is gone
+# as well; the locked commit is vendored as an npm tarball (see vendor/README.md).
+# Git must fail fast instead of waiting for credentials if another git dependency appears.
+ENV GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes"
+ARG EVM_MODULE_TARBALL_SHA256=570d9d27c97ca7cd1334ac13c6758f5f3c458c460f03324dcff474f787e385b6
+COPY vendor/dkg-evm-module-1088476.tgz /opt/vendor/dkg-evm-module-1088476.tgz
+RUN echo "${EVM_MODULE_TARBALL_SHA256}  /opt/vendor/dkg-evm-module-1088476.tgz" | sha256sum -c - \
+ && npm pkg set dependencies.dkg-evm-module=file:/opt/vendor/dkg-evm-module-1088476.tgz
+
+# NPM_LOGLEVEL=http (with --progress=plain) shows each download and install script.
+ARG NPM_LOGLEVEL=warn
 RUN --mount=type=cache,target=/root/.npm \
     npm config set fetch-timeout 600000 \
  && npm install \
@@ -38,7 +61,8 @@ RUN --mount=type=cache,target=/root/.npm \
       --fetch-retry-mintimeout=30000 \
       --fetch-retry-maxtimeout=300000 \
       --maxsockets=3 \
-      --loglevel=warn
+      --foreground-scripts \
+      --loglevel=${NPM_LOGLEVEL}
 
 # ── 4. Pre-download Solidity compiler ────────────────────────────────────────
 # Hardhat fetches solc at first run; on Rosetta that download hangs.

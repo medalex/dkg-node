@@ -52,6 +52,14 @@ echo "[entrypoint] Starting MySQL (init pass)..."
 mkdir -p /var/run/mysqld
 chown -R mysql:mysql /var/run/mysqld /var/lib/mysql
 
+# The package postinst creates the system tables at build time, but can fail silently
+# (e.g. under QEMU amd64 emulation), leaving an empty datadir. Create them here if missing.
+if [ ! -d /var/lib/mysql/mysql ]; then
+    echo "[entrypoint] MySQL datadir is empty, running mariadb-install-db..."
+    mariadb-install-db --user=mysql --datadir=/var/lib/mysql > "$LOG/mysql-install-db.log" 2>&1 \
+        || { echo "[entrypoint] ERROR: mariadb-install-db failed, see $LOG/mysql-install-db.log" >&2; exit 1; }
+fi
+
 mysqld_safe --skip-grant-tables --user=mysql \
     --log-error="$LOG/mysql-error.log" > "$LOG/mysql.log" 2>&1 &
 wait_port "MySQL init" 3306 60
