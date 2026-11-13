@@ -55,7 +55,8 @@ curl http://localhost:9200/api/status
 Base URL `http://localhost:9200`, header `Authorization: Bearer <token>`:
 
 ```bash
-TOKEN=$(cat data/auth.token)
+# auth.token starts with a "# ..." comment line; the token is the last line
+TOKEN=$(grep -v "^#" data/auth.token | tr -d "[:space:]")
 curl -H "Authorization: Bearer $TOKEN" http://localhost:9200/api/status
 ```
 
