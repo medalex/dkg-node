@@ -1,0 +1,14 @@
+services:
+  dkg-v10:
+    build: .
+    ports:
+      - "9200:9200"
+    volumes:
+      - ./data:/data/dkg
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:9200/api/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
