@@ -24,6 +24,9 @@ Object.assign(config, {
   apiHost: "0.0.0.0", // inside the container; the host only sees the published port
   apiPort: 9200,
   telemetry: { ...(config.telemetry ?? {}), enabled: false },
+  // Requests reach the node from the Docker gateway, not loopback, so the per-IP limit (default
+  // 120/min) applies to MFSSIA, which sends several SPARQL queries per evidence lookup.
+  rateLimit: { ...(config.rateLimit ?? {}), requestsPerMinute: 6000 },
 });
 fs.writeFileSync(path, JSON.stringify(config, null, 2) + "\n");
 ' "$CONFIG"

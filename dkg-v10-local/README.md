@@ -27,8 +27,13 @@ the local settings into `config.json` (on every start):
 "autoUpdate": {"enabled": false, "source": "npm"},
 "apiHost": "0.0.0.0",
 "apiPort": 9200,
-"telemetry": {"enabled": false}
+"telemetry": {"enabled": false},
+"rateLimit": {"requestsPerMinute": 6000}
 ```
+
+Requests reach the node from the Docker gateway rather than loopback, so the node's per-IP
+API limit (default 120 requests/min) applies to MFSSIA, which sends several SPARQL queries per
+evidence lookup; at the default a pilot smoke run already gets HTTP 429.
 
 `dkg init` itself also asks the public testnet faucet for tokens for the generated wallets.
 They are not used in mock mode.
